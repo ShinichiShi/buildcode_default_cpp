@@ -34,7 +34,7 @@ size_t octalToDecimal(const std::string& octal) {
     try {
         std::string trimmed;
         for (char c : octal) {
-            if (c != '\0') trimmed += c;
+            if (c != '\0' && c != ' ') trimmed += c;
         }
         return std::stoull(trimmed, nullptr, 8);
     } catch (...) {
@@ -48,9 +48,6 @@ std::string trim(const char* str, size_t size) {
     for (size_t i = 0; i < size && str[i] != '\0'; ++i) {
         result += str[i];
     }
-    while (!result.empty() && result.back() == ' ') {
-        result.pop_back();
-    }
     return result;
 }
 
@@ -63,6 +60,7 @@ bool isEmptyHeader(const TarHeader& header) {
     return true;
 }
 
+// Extract regular file
 bool extractFile(const fs::path& outputPath, std::ifstream& archive, size_t fileSize) {
     // Create parent directories if they don't exist
     fs::create_directories(outputPath.parent_path());
@@ -89,6 +87,21 @@ bool extractFile(const fs::path& outputPath, std::ifstream& archive, size_t file
     archive.seekg(paddingSize, std::ios::cur);
 
     return true;
+}
+
+// Handle hard links and symbolic links
+bool handleLink(const fs::path& outputPath, const std::string& linkname, char typeflag) {
+    try {
+        if (typeflag == '2') { // Symbolic link
+            fs::create_symlink(linkname, outputPath);
+        } else if (typeflag == '1') { // Hard link
+            fs::create_hard_link(linkname, outputPath);
+        }
+        return true;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create link: " << e.what() << std::endl;
+        return false;
+    }
 }
 
 int main(int argc, char* argv[]) {
@@ -128,22 +141,28 @@ int main(int argc, char* argv[]) {
         // Get filename and size
         std::string filename = trim(header.name, sizeof(header.name));
         size_t fileSize = octalToDecimal(std::string(header.size, sizeof(header.size)));
+        char typeflag = header.typeflag[0];
+        std::string linkname = trim(header.linkname, sizeof(header.linkname));
 
         // Construct output path
         fs::path outputPath = outputDir / filename;
 
         // Check if it's a directory
-        if (filename.back() == '/') {
-            // Create directory
+        if (typeflag == '5') {
             try {
                 fs::create_directories(outputPath);
             } catch (const std::exception& e) {
                 std::cerr << "Failed to create directory: " << outputPath << std::endl;
                 return 1;
             }
-        } else {
-            // Extract file
+        } else if (typeflag == '0' || typeflag == '\0') {
+            // Extract regular file
             if (!extractFile(outputPath, archive, fileSize)) {
+                return 1;
+            }
+        } else if (typeflag == '2' || typeflag == '1') {
+            // Handle links
+            if (!handleLink(outputPath, linkname, typeflag)) {
                 return 1;
             }
         }
