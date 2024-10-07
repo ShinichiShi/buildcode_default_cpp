@@ -1,8 +1,8 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-#include <cstring>
 #include <vector>
+#include <cstring>
 
 struct TarHeader {
     char name[100];
@@ -38,19 +38,6 @@ long long octalToDecimal(const std::string& octal) {
     }
 }
 
-// Trim null bytes and whitespace
-std::string trim(const char* str, size_t size) {
-    std::string result;
-    for (size_t i = 0; i < size && str[i] != '\0'; ++i) {
-        result += str[i];
-    }
-    // Trim trailing spaces
-    while (!result.empty() && result.back() == ' ') {
-        result.pop_back();
-    }
-    return result;
-}
-
 int main(int argc, char* argv[]) {
     if (argc != 2) {
         std::cerr << "Usage: " << argv[0] << " <tar-file>" << std::endl;
@@ -63,48 +50,30 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // Read header
     TarHeader header;
     if (!file.read(reinterpret_cast<char*>(&header), sizeof(header))) {
         std::cerr << "Failed to read header" << std::endl;
         return 1;
     }
 
-    // Print filename
-    std::cout << trim(header.name, sizeof(header.name)) << std::endl;
+    // Get file size from header (stored in octal)
+    size_t fileSize = octalToDecimal(std::string(header.size, sizeof(header.size)));
 
-    // Print numeric fields
-    std::cout << octalToDecimal(std::string(header.mode, sizeof(header.mode))) << std::endl;
-    std::cout << octalToDecimal(std::string(header.uid, sizeof(header.uid))) << std::endl;
-    std::cout << octalToDecimal(std::string(header.gid, sizeof(header.gid))) << std::endl;
-    std::cout << octalToDecimal(std::string(header.size, sizeof(header.size))) << std::endl;
-    std::cout << octalToDecimal(std::string(header.mtime, sizeof(header.mtime))) << std::endl;
-    
-    // Print checksum (keep leading zeros)
-    std::string checksum(header.checksum, 6); // Use first 6 bytes only
-    std::cout << checksum << std::endl;
+    // Calculate number of 512-byte chunks needed
+    size_t numChunks = (fileSize + 511) / 512;  // Round up division
 
-    // Print typeflag
-    std::cout << trim(header.typeflag, sizeof(header.typeflag)) << std::endl;
+    // Create buffer for file contents
+    std::vector<char> buffer(numChunks * 512);
 
-    // Print empty line for linkname
-    std::cout << std::endl;
+    // Read all chunks
+    if (!file.read(buffer.data(), numChunks * 512)) {
+        std::cerr << "Failed to read file contents" << std::endl;
+        return 1;
+    }
 
-    // Print magic
-    std::cout << trim(header.magic, sizeof(header.magic)) << std::endl;
-
-    // Print empty line for version
-    std::cout << std::endl;
-
-    // Print username and groupname
-    std::cout << trim(header.uname, sizeof(header.uname)) << std::endl;
-    std::cout << trim(header.gname, sizeof(header.gname)) << std::endl;
-
-    // Print two empty lines for devmajor and devminor
-    std::cout << std::endl;
-    std::cout << std::endl;
-
-    // Print empty line for prefix
-    std::cout << std::endl;
+    // Write only the actual file contents (up to fileSize)
+    std::cout.write(buffer.data(), fileSize);
 
     return 0;
 }
