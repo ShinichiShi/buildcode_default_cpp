@@ -38,43 +38,62 @@ size_t octalToDecimal(const std::string& octal) {
     }
 }
 
+// Trim null bytes and whitespace from string
+std::string trim(const char* str, size_t size) {
+    std::string result;
+    for (size_t i = 0; i < size && str[i] != '\0'; ++i) {
+        result += str[i];
+    }
+    while (!result.empty() && result.back() == ' ') {
+        result.pop_back();
+    }
+    return result;
+}
+
+// Check if a header is empty (all null bytes)
+bool isEmptyHeader(const TarHeader& header) {
+    const char* ptr = reinterpret_cast<const char*>(&header);
+    for (size_t i = 0; i < sizeof(TarHeader); ++i) {
+        if (ptr[i] != '\0') return false;
+    }
+    return true;
+}
+
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        std::cerr << "Usage: " << argv[0] << " <tar-file>" << std::endl;
+    if (argc != 3 || std::string(argv[1]) != "-tf") {
+        std::cerr << "Usage: " << argv[0] << " -tf <tar-file>" << std::endl;
         return 1;
     }
 
-    // Open file in binary mode
-    std::ifstream file(argv[1], std::ios::binary);
+    std::ifstream file(argv[2], std::ios::binary);
     if (!file) {
-        std::cerr << "Failed to open file: " << argv[1] << std::endl;
+        std::cerr << "Failed to open file: " << argv[2] << std::endl;
         return 1;
     }
 
-    // Read the header
-    TarHeader header;
-    if (!file.read(reinterpret_cast<char*>(&header), 512)) {
-        std::cerr << "Failed to read header" << std::endl;
-        return 1;
+    while (file) {
+        // Read header
+        TarHeader header;
+        if (!file.read(reinterpret_cast<char*>(&header), sizeof(header))) {
+            break;
+        }
+
+        // Check if we've reached the end (two consecutive empty headers)
+        if (isEmptyHeader(header)) {
+            break;
+        }
+
+        // Get the filename
+        std::string filename = trim(header.name, sizeof(header.name));
+        if (!filename.empty()) {
+            std::cout << filename << std::endl;
+        }
+
+        // Get file size and skip to next header
+        size_t fileSize = octalToDecimal(std::string(header.size, sizeof(header.size)));
+        size_t skipSize = ((fileSize + 511) / 512) * 512;  // Round up to next 512 boundary
+        file.seekg(skipSize, std::ios::cur);
     }
-
-    // Get the file size from the header
-    size_t fileSize = octalToDecimal(std::string(header.size, sizeof(header.size)));
-    if (fileSize == 0) {
-        return 0;  // Empty file
-    }
-
-    // Create a buffer exactly the size of the file
-    std::vector<char> buffer(fileSize);
-
-    // Read exactly fileSize bytes
-    if (!file.read(buffer.data(), fileSize)) {
-        std::cerr << "Failed to read file contents" << std::endl;
-        return 1;
-    }
-
-    // Write the exact file contents without any null padding
-    std::cout.write(buffer.data(), fileSize);
 
     return 0;
 }
