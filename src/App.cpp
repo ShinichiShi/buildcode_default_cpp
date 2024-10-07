@@ -2,7 +2,11 @@
 #include <fstream>
 #include <string>
 #include <vector>
+#include <filesystem>
 #include <cstring>
+#include <system_error>
+
+namespace fs = std::filesystem;
 
 struct TarHeader {
     char name[100];
@@ -59,40 +63,90 @@ bool isEmptyHeader(const TarHeader& header) {
     return true;
 }
 
+bool extractFile(const fs::path& outputPath, std::ifstream& archive, size_t fileSize) {
+    // Create parent directories if they don't exist
+    fs::create_directories(outputPath.parent_path());
+
+    // Open output file
+    std::ofstream outFile(outputPath, std::ios::binary);
+    if (!outFile) {
+        std::cerr << "Failed to create file: " << outputPath << std::endl;
+        return false;
+    }
+
+    // Read and write file contents
+    std::vector<char> buffer(fileSize);
+    if (fileSize > 0) {
+        if (!archive.read(buffer.data(), fileSize)) {
+            std::cerr << "Failed to read file contents" << std::endl;
+            return false;
+        }
+        outFile.write(buffer.data(), fileSize);
+    }
+
+    // Skip padding bytes
+    size_t paddingSize = (512 - (fileSize % 512)) % 512;
+    archive.seekg(paddingSize, std::ios::cur);
+
+    return true;
+}
+
 int main(int argc, char* argv[]) {
-    if (argc != 3 || std::string(argv[1]) != "-tf") {
-        std::cerr << "Usage: " << argv[0] << " -tf <tar-file>" << std::endl;
+    if (argc != 5 || std::string(argv[1]) != "-xf" || std::string(argv[3]) != "-C") {
+        std::cerr << "Usage: " << argv[0] << " -xf <tar-file> -C <output-dir>" << std::endl;
         return 1;
     }
 
-    std::ifstream file(argv[2], std::ios::binary);
-    if (!file) {
-        std::cerr << "Failed to open file: " << argv[2] << std::endl;
+    // Open tar archive
+    std::ifstream archive(argv[2], std::ios::binary);
+    if (!archive) {
+        std::cerr << "Failed to open archive: " << argv[2] << std::endl;
         return 1;
     }
 
-    while (file) {
+    // Create output directory
+    fs::path outputDir = argv[4];
+    try {
+        fs::create_directories(outputDir);
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create output directory: " << e.what() << std::endl;
+        return 1;
+    }
+
+    while (archive) {
         // Read header
         TarHeader header;
-        if (!file.read(reinterpret_cast<char*>(&header), sizeof(header))) {
+        if (!archive.read(reinterpret_cast<char*>(&header), sizeof(header))) {
             break;
         }
 
-        // Check if we've reached the end (two consecutive empty headers)
+        // Check for end of archive
         if (isEmptyHeader(header)) {
             break;
         }
 
-        // Get the filename
+        // Get filename and size
         std::string filename = trim(header.name, sizeof(header.name));
-        if (!filename.empty()) {
-            std::cout << filename << std::endl;
-        }
-
-        // Get file size and skip to next header
         size_t fileSize = octalToDecimal(std::string(header.size, sizeof(header.size)));
-        size_t skipSize = ((fileSize + 511) / 512) * 512;  // Round up to next 512 boundary
-        file.seekg(skipSize, std::ios::cur);
+
+        // Construct output path
+        fs::path outputPath = outputDir / filename;
+
+        // Check if it's a directory
+        if (filename.back() == '/') {
+            // Create directory
+            try {
+                fs::create_directories(outputPath);
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to create directory: " << outputPath << std::endl;
+                return 1;
+            }
+        } else {
+            // Extract file
+            if (!extractFile(outputPath, archive, fileSize)) {
+                return 1;
+            }
+        }
     }
 
     return 0;
