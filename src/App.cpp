@@ -105,8 +105,8 @@ bool handleLink(const fs::path& outputPath, const std::string& linkname, char ty
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 5 || std::string(argv[1]) != "-xf" || std::string(argv[3]) != "-C") {
-        std::cerr << "Usage: " << argv[0] << " -xf <tar-file> -C <output-dir>" << std::endl;
+      if (argc < 3 || std::string(argv[1]) != "-xf") {
+        std::cerr << "Usage: " << argv[0] << " -xf <tar-file> [-C <output-dir>]" << std::endl;
         return 1;
     }
 
@@ -117,15 +117,21 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Create output directory
-    fs::path outputDir = argv[4];
+    // Determine output directory
+    fs::path outputDir;
+    if (argc == 5 && std::string(argv[3]) == "-C") {
+        outputDir = argv[4];
+    } else {
+        outputDir = fs::current_path();
+    }
+
+    // Create output directory if it doesn't exist
     try {
         fs::create_directories(outputDir);
     } catch (const std::exception& e) {
         std::cerr << "Failed to create output directory: " << e.what() << std::endl;
         return 1;
     }
-
     while (archive) {
         // Read header
         TarHeader header;
