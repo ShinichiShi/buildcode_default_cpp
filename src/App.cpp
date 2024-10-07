@@ -38,12 +38,17 @@ long long octalToDecimal(const std::string& octal) {
     }
 }
 
-// Trim whitespace from both ends of a string
-std::string trim(const std::string& str) {
-    size_t first = str.find_first_not_of(" \t\n\0");
-    if (first == std::string::npos) return "";
-    size_t last = str.find_last_not_of(" \t\n\0");
-    return str.substr(first, last - first + 1);
+// Trim null bytes and whitespace
+std::string trim(const char* str, size_t size) {
+    std::string result;
+    for (size_t i = 0; i < size && str[i] != '\0'; ++i) {
+        result += str[i];
+    }
+    // Trim trailing spaces
+    while (!result.empty() && result.back() == ' ') {
+        result.pop_back();
+    }
+    return result;
 }
 
 int main(int argc, char* argv[]) {
@@ -64,27 +69,42 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Print all fields
-    std::cout << trim(std::string(header.name, sizeof(header.name))) << std::endl;
+    // Print filename
+    std::cout << trim(header.name, sizeof(header.name)) << std::endl;
+
+    // Print numeric fields
     std::cout << octalToDecimal(std::string(header.mode, sizeof(header.mode))) << std::endl;
     std::cout << octalToDecimal(std::string(header.uid, sizeof(header.uid))) << std::endl;
     std::cout << octalToDecimal(std::string(header.gid, sizeof(header.gid))) << std::endl;
     std::cout << octalToDecimal(std::string(header.size, sizeof(header.size))) << std::endl;
     std::cout << octalToDecimal(std::string(header.mtime, sizeof(header.mtime))) << std::endl;
     
-    // For checksum, trim the trailing 2 bytes as specified
-    std::string checksum(header.checksum, sizeof(header.checksum) - 2);
-    std::cout << octalToDecimal(checksum) << std::endl;
-    
-    std::cout << trim(std::string(header.typeflag, sizeof(header.typeflag))) << std::endl;
-    std::cout << trim(std::string(header.linkname, sizeof(header.linkname))) << std::endl;
-    std::cout << trim(std::string(header.magic, sizeof(header.magic))) << std::endl;
-    std::cout << trim(std::string(header.version, sizeof(header.version))) << std::endl;
-    std::cout << trim(std::string(header.uname, sizeof(header.uname))) << std::endl;
-    std::cout << trim(std::string(header.gname, sizeof(header.gname))) << std::endl;
-    std::cout << octalToDecimal(std::string(header.devmajor, sizeof(header.devmajor))) << std::endl;
-    std::cout << octalToDecimal(std::string(header.devminor, sizeof(header.devminor))) << std::endl;
-    std::cout << trim(std::string(header.prefix, sizeof(header.prefix))) << std::endl;
+    // Print checksum (keep leading zeros)
+    std::string checksum(header.checksum, 6); // Use first 6 bytes only
+    std::cout << checksum << std::endl;
+
+    // Print typeflag
+    std::cout << trim(header.typeflag, sizeof(header.typeflag)) << std::endl;
+
+    // Print empty line for linkname
+    std::cout << std::endl;
+
+    // Print magic
+    std::cout << trim(header.magic, sizeof(header.magic)) << std::endl;
+
+    // Print empty line for version
+    std::cout << std::endl;
+
+    // Print username and groupname
+    std::cout << trim(header.uname, sizeof(header.uname)) << std::endl;
+    std::cout << trim(header.gname, sizeof(header.gname)) << std::endl;
+
+    // Print two empty lines for devmajor and devminor
+    std::cout << std::endl;
+    std::cout << std::endl;
+
+    // Print empty line for prefix
+    std::cout << std::endl;
 
     return 0;
 }
